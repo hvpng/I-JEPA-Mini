@@ -5,16 +5,16 @@ data:
     - 0.3
     - 1.0
   crop_size: 64                
-  image_folder: tiny-imagenet-200/
+  image_folder: tiny-imagenet-200
   num_workers: 8
   pin_mem: true
-  root_path: ./datasets
+  root_path: /kaggle/input/tini-imagenet-200/datasets
   use_color_distortion: false
   use_gaussian_blur: false
   use_horizontal_flip: false
 
 logging:
-  folder: ./logs/tinyin200_vits14_ep400/
+  folder: /kaggle/working/logs/tinyin200_vits14_ep400/
   write_tag: jepa
 
 mask:
@@ -46,7 +46,7 @@ optimization:
   ema:
     - 0.996
     - 1.0
-  epochs: 50                    
+  epochs: 200                    
   lr: 0.0008
   start_lr: 0.0001
   warmup: 10
