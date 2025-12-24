@@ -8,7 +8,7 @@ data:
   image_folder: tiny-imagenet-200
   num_workers: 8
   pin_mem: true
-  root_path: /kaggle/input/tini-imagenet-200/datasets
+  root_path: /kaggle/working/datasets
   use_color_distortion: false
   use_gaussian_blur: false
   use_horizontal_flip: false
