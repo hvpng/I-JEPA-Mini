@@ -1,5 +1,4 @@
 *.swp
 *.swo
 __pycache__
-datasets/
 venv/
