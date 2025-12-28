@@ -50,7 +50,7 @@ optimization:
   lr: 0.0008
   start_lr: 0.0001
   warmup: 10
-  final_lr: 1e-6
+  final_lr: 1.0e-06
   weight_decay: 0.04
   final_weight_decay: 0.4
   ipe_scale: 1.0
