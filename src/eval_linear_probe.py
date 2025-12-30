@@ -122,6 +122,12 @@ def main():
     ap.add_argument("--num_workers", type=int, default=8)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--out_dir", default=None)
+
+    # ---- checkpoint options (added)
+    ap.add_argument("--ckpt_freq", type=int, default=10, help="save LP checkpoint every N epochs")
+    ap.add_argument("--save_best", action="store_true", help="also save best LP head checkpoint")
+    ap.add_argument("--resume", action="store_true", help="resume LP training from lp-*-latest.pth.tar in out_dir")
+
     args = ap.parse_args()
 
     # ---- load config (training config đã dump ra params-ijepa.yaml)
@@ -208,13 +214,64 @@ def main():
     out_csv = os.path.join(out_dir, f"linear_probe_{os.path.basename(args.ckpt)}.csv")
     out_json = os.path.join(out_dir, f"linear_probe_{os.path.basename(args.ckpt)}.json")
 
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["epoch", "train_loss", "train_acc", "val_loss", "val_acc"])
+    # ---- checkpoint paths (added; analogous to train.py)
+    ckpt_base = os.path.splitext(os.path.basename(args.ckpt))[0]  # e.g. "jepa-ep100.pth"
+    lp_latest_path = os.path.join(out_dir, f"lp-{ckpt_base}-latest.pth.tar")
+    lp_save_path = os.path.join(out_dir, f"lp-{ckpt_base}-ep{{epoch}}.pth.tar")
+    lp_best_path = os.path.join(out_dir, f"lp-{ckpt_base}-best.pth.tar")
 
+    def save_lp_checkpoint(epoch, tr_loss, tr_acc, va_loss, va_acc, best_dict):
+        save_dict = {
+            "epoch": int(epoch),
+            "head": head.state_dict(),
+            "opt": opt.state_dict(),
+            "best": dict(best_dict),
+            "train_loss": float(tr_loss),
+            "train_acc": float(tr_acc),
+            "val_loss": float(va_loss),
+            "val_acc": float(va_acc),
+            "ckpt": args.ckpt,
+            "config": args.config,
+            "use_encoder": args.use_encoder,
+            "pool": args.pool,
+            "embed_dim": int(embed_dim),
+            "num_classes": int(num_classes),
+            "args": vars(args),
+        }
+        torch.save(save_dict, lp_latest_path)
+
+        # Save periodic epoch checkpoint
+        if args.ckpt_freq > 0 and (epoch % args.ckpt_freq == 0):
+            torch.save(save_dict, lp_save_path.format(epoch=f"{epoch:03d}"))
+
+        # Save best checkpoint if requested
+        if args.save_best and best_dict.get("epoch", -1) == epoch:
+            torch.save(save_dict, lp_best_path)
+
+    # CSV header: keep legacy behavior (always overwrite) unless resuming (added)
     best = {"val_acc": -1.0, "epoch": -1}
+    start_epoch = 1
 
-    for epoch in range(1, args.epochs + 1):
+    if args.resume and os.path.exists(lp_latest_path):
+        lp_ckpt = torch.load(lp_latest_path, map_location="cpu")
+        head.load_state_dict(lp_ckpt["head"], strict=True)
+        opt.load_state_dict(lp_ckpt["opt"])
+        best = lp_ckpt.get("best", best)
+        start_epoch = int(lp_ckpt.get("epoch", 0)) + 1
+
+        # If resuming, do not wipe old CSV; append instead (added)
+        if not os.path.exists(out_csv):
+            with open(out_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["epoch", "train_loss", "train_acc", "val_loss", "val_acc"])
+        print(f"[LP] Resumed from {lp_latest_path} at epoch={start_epoch-1}, best={best}")
+    else:
+        # legacy behavior: overwrite CSV each run
+        with open(out_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["epoch", "train_loss", "train_acc", "val_loss", "val_acc"])
+
+    for epoch in range(start_epoch, args.epochs + 1):
         # ---- train head
         head.train()
         tr_loss, tr_acc, n = 0.0, 0.0, 0
@@ -266,6 +323,9 @@ def main():
             w = csv.writer(f)
             w.writerow([epoch, tr_loss, tr_acc, va_loss, va_acc])
 
+        # ---- save checkpoint (added)
+        save_lp_checkpoint(epoch, tr_loss, tr_acc, va_loss, va_acc, best)
+
     summary = {
         "ckpt": args.ckpt,
         "config": args.config,
@@ -275,12 +335,17 @@ def main():
         "best_epoch": best["epoch"],
         "num_classes": num_classes,
         "embed_dim": embed_dim,
+        "lp_latest_ckpt": lp_latest_path,
+        "lp_best_ckpt": lp_best_path if args.save_best else None,
     }
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
     print("Saved:", out_csv)
     print("Saved:", out_json)
+    print("LP latest:", lp_latest_path)
+    if args.save_best:
+        print("LP best:", lp_best_path)
 
 
 if __name__ == "__main__":
