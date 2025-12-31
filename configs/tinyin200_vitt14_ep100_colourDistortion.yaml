@@ -8,13 +8,13 @@ data:
   image_folder: tiny-imagenet-200
   num_workers: 8
   pin_mem: true
-  root_path: /content/datasets
+  root_path: /kaggle/working/datasets
   use_color_distortion: true
   use_gaussian_blur: false
   use_horizontal_flip: false
 
 logging:
-  folder: /content/drive/MyDrive/Mini/logs/tinyin200_vitt14_ep100_colourDistortion/
+  folder: /kaggle/working/logs/tinyin200_vitt14_ep100_colourDistortion/
   write_tag: jepa
 
 mask:
