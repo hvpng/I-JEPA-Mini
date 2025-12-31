@@ -46,7 +46,7 @@ optimization:
   ema:
     - 0.996
     - 1.0
-  epochs: 100
+  epochs: 50
   lr: 0.0008
   start_lr: 0.0001
   warmup: 10
