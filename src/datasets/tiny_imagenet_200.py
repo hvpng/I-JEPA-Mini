@@ -7,7 +7,6 @@ from torch.utils.data.distributed import DistributedSampler
 from torchvision.datasets import ImageFolder
 import torch
 import numpy as np
-import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -82,73 +81,34 @@ class TinyImageNet(ImageFolder):
         src_root = os.path.join(base_path, "train")
         dst_root = os.path.join(base_path, "train_flat")
 
-        ready_flag = os.path.join(dst_root, ".READY")
-        lock_path = os.path.join(base_path, ".train_flat.LOCK")
+        if os.path.exists(dst_root):
+            shutil.rmtree(dst_root)
 
-        # Nếu đã build xong từ trước thì dùng luôn
-        if os.path.exists(ready_flag):
-            return dst_root
+        logger.info("Preparing Tiny-ImageNet train split")
+        os.makedirs(dst_root, exist_ok=True)
 
-        # Cố gắng lấy lock để build (chỉ 1 process được build)
-        while True:
-            try:
-                # tạo file lock kiểu "exclusive" (fail nếu đã tồn tại)
-                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.close(fd)
-                got_lock = True
-            except FileExistsError:
-                got_lock = False
+        for idx, class_id in enumerate(os.listdir(src_root)):
+            src_class = os.path.join(src_root, class_id)
+            if not os.path.isdir(src_class):
+                continue
+            img_dir = os.path.join(src_class, "images")
+            if not os.path.exists(img_dir):
+                continue
+            dst_class = os.path.join(dst_root, class_id)
+            os.makedirs(dst_class, exist_ok=True)
 
-            if got_lock:
-                break
+            for img in os.listdir(img_dir):
+                if img.lower().endswith((".jpeg", ".jpg", ".png")):
+                    src = os.path.join(img_dir, img)
+                    dst_name = os.path.splitext(img)[0] + ".jpg"
+                    dst = os.path.join(dst_class, dst_name)
+                    self._convert_to_jpg(src, dst)
 
-            # process khác đang build -> đợi nó build xong
-            if os.path.exists(ready_flag):
-                return dst_root
-            time.sleep(1)
+            logger.info(f"[Train] Processed class {idx+1}/{len(os.listdir(src_root))}: {class_id}")
 
-        # Nếu tới đây nghĩa là mình đã giữ lock -> mình build
-        try:
-            if os.path.exists(dst_root):
-                shutil.rmtree(dst_root, ignore_errors=True)
-
-            logger.info("Preparing Tiny-ImageNet train split")
-            os.makedirs(dst_root, exist_ok=True)
-
-            classes = [d for d in os.listdir(src_root) if os.path.isdir(os.path.join(src_root, d))]
-            for idx, class_id in enumerate(classes):
-                src_class = os.path.join(src_root, class_id)
-                img_dir = os.path.join(src_class, "images")
-                if not os.path.exists(img_dir):
-                    continue
-
-                dst_class = os.path.join(dst_root, class_id)
-                os.makedirs(dst_class, exist_ok=True)
-
-                for img in os.listdir(img_dir):
-                    if img.lower().endswith((".jpeg", ".jpg", ".png")):
-                        src = os.path.join(img_dir, img)
-                        dst_name = os.path.splitext(img)[0] + ".jpg"
-                        dst = os.path.join(dst_class, dst_name)
-                        self._convert_to_jpg(src, dst)
-
-                logger.info(f"[Train] Processed class {idx+1}/{len(classes)}: {class_id}")
-
-            total = sum(len(os.listdir(os.path.join(dst_root, cls))) for cls in os.listdir(dst_root))
-            logger.info(f"Train split ready: {len(os.listdir(dst_root))} classes, {total} images")
-
-            # đánh dấu build xong
-            with open(ready_flag, "w") as f:
-                f.write("ok\n")
-
-            return dst_root
-
-        finally:
-            # thả lock
-            try:
-                os.remove(lock_path)
-            except FileNotFoundError:
-                pass
+        total = sum(len(os.listdir(os.path.join(dst_root, cls))) for cls in os.listdir(dst_root))
+        logger.info(f"Train split ready: {len(os.listdir(dst_root))} classes, {total} images")
+        return dst_root
 
     def _prepare_val(self, base_path):
         src_root = os.path.join(base_path, "val")
